@@ -6,11 +6,26 @@
 #include <stdio.h>
 
 #include "led.h"
+#include "button.h"
 
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 
-Led led(GPIOA, 8);
+volatile uint16_t pressed = 0;
+
+extern "C" void EXTI0_IRQHandler(void) 
+{
+  EXTI->PR = EXTI_PR_PR0;
+  pressed = 1;
+}
+
+extern "C" void EXTI1_IRQHandler(void) 
+{
+  EXTI->PR = EXTI_PR_PR0;
+  pressed = 2;
+}
+
+Button button(GPIOA, 0);
 
 int main(void)
 {
@@ -24,15 +39,36 @@ int main(void)
   const int MSGBUFSIZE = 80;
   char msgBuf[MSGBUFSIZE];
 
-  led.init();
-
   snprintf(msgBuf, MSGBUFSIZE, "%s", "WEEEEEEEEEEE!\r\n");
   HAL_UART_Transmit(&huart2, (uint8_t *)msgBuf, strlen(msgBuf), HAL_MAX_DELAY);
 
+  button.Init();
+
+  SYSCFG->EXTICR[0] |= (SYSCFG->EXTICR[0] & ~SYSCFG_EXTICR1_EXTI0) | (0b000 << SYSCFG_EXTICR1_EXTI0_Pos); 
+  SYSCFG->EXTICR[0] |= (SYSCFG->EXTICR[0] & ~SYSCFG_EXTICR1_EXTI1) | (0b000 << SYSCFG_EXTICR1_EXTI1_Pos); 
+  EXTI->FTSR |= EXTI_FTSR_FT0;     
+  EXTI->RTSR |= EXTI_RTSR_RT1;                                                                                                                        
+  NVIC_EnableIRQ(EXTI0_IRQn);  
+  NVIC_EnableIRQ(EXTI1_IRQn);
+  EXTI->IMR |= EXTI_IMR_MR0; 
+  EXTI->IMR |= EXTI_IMR_MR1;  
+
+  uint16_t count = 0;
+
   while (true)
   {
-    led.toggle();
-    HAL_Delay(1000);
+    if (pressed == 1)
+    {
+      snprintf(msgBuf, MSGBUFSIZE, "%i%s", count++, "\r\n");
+      HAL_UART_Transmit(&huart2, (uint8_t *)msgBuf, strlen(msgBuf), HAL_MAX_DELAY);
+      pressed = 0;
+    }
+    else if(pressed == 2)
+    {
+      snprintf(msgBuf, MSGBUFSIZE, "%s", "WEEEEEEEEEEE!\r\n");
+      HAL_UART_Transmit(&huart2, (uint8_t *)msgBuf, strlen(msgBuf), HAL_MAX_DELAY);
+      pressed = 0;
+    }
   }
 }
 
